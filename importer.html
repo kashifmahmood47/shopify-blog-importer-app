@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WordPress XML to Shopify Importer</title>
+
+  <style>
+
+    body{
+      font-family:Arial;
+      background:#111;
+      color:white;
+      padding:40px;
+    }
+
+    .box{
+      max-width:700px;
+      margin:auto;
+      background:#1c1c1c;
+      padding:30px;
+      border-radius:12px;
+    }
+
+    input,
+    button{
+      width:100%;
+      padding:14px;
+      margin-top:15px;
+      border:none;
+      border-radius:6px;
+    }
+
+    button{
+      background:#4CAF50;
+      color:white;
+      font-size:18px;
+      cursor:pointer;
+    }
+
+    #logs{
+      white-space:pre-wrap;
+      margin-top:20px;
+      background:#000;
+      padding:15px;
+      border-radius:10px;
+      height:300px;
+      overflow:auto;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h1>WordPress XML → Shopify Importer</h1>
+
+  <input type="text" id="store" placeholder="your-store.myshopify.com">
+
+  <input type="text" id="token" placeholder="Shopify Admin API Token">
+
+  <input type="text" id="blogid" placeholder="Shopify Blog ID">
+
+  <input type="file" id="xmlFile">
+
+  <button onclick="startImport()">
+    Import Blogs
+  </button>
+
+  <div id="logs"></div>
+
+</div>
+
+
+<script>
+
+async function startImport(){
+
+  const logs = document.getElementById("logs");
+
+  logs.innerHTML = "Reading XML...\n";
+
+  const file =
+    document.getElementById("xmlFile").files[0];
+
+  const store =
+    document.getElementById("store").value;
+
+  const token =
+    document.getElementById("token").value;
+
+  const blogId =
+    document.getElementById("blogid").value;
+
+  if(!file){
+    alert("Upload XML file");
+    return;
+  }
+
+  const text = await file.text();
+
+  const parser =
+    new DOMParser();
+
+  const xml =
+    parser.parseFromString(text, "text/xml");
+
+  const items =
+    xml.querySelectorAll("item");
+
+  let imported = 0;
+
+  for(const item of items){
+
+    const postType =
+      item.querySelector("wp\\:post_type, post_type")?.textContent;
+
+    const status =
+      item.querySelector("wp\\:status, status")?.textContent;
+
+    if(postType !== "post"){
+      continue;
+    }
+
+    if(status !== "publish"){
+      continue;
+    }
+
+    const title =
+      item.querySelector("title")?.textContent || "";
+
+    const content =
+      item.querySelector("content\\:encoded, encoded")?.textContent || "";
+
+    const excerpt =
+      item.querySelector("excerpt\\:encoded")?.textContent || "";
+
+    const slug =
+      item.querySelector("wp\\:post_name, post_name")?.textContent || "";
+
+    const date =
+      item.querySelector("wp\\:post_date, post_date")?.textContent || "";
+
+    logs.innerHTML += "Importing: " + title + "\n";
+
+    let image = "";
+
+    const imgMatch =
+      content.match(/<img[^>]+src="([^">]+)"/i);
+
+    if(imgMatch){
+      image = imgMatch[1];
+    }
+
+    const articleData = {
+      article: {
+        title: title,
+        body_html: content,
+        summary_html: excerpt,
+        handle: slug,
+        published_at: date
+      }
+    };
+
+    if(image){
+      articleData.article.image = {
+        src: image
+      };
+    }
+
+    try{
+
+      await fetch(
+        `https://${store}/admin/api/2025-01/blogs/${blogId}/articles.json`,
+        {
+          method:"POST",
+
+          headers:{
+            "Content-Type":"application/json",
+            "X-Shopify-Access-Token":token
+          },
+
+          body:JSON.stringify(articleData)
+        }
+      );
+
+      imported++;
+
+      logs.innerHTML += "✅ Imported\n\n";
+
+    }catch(e){
+
+      logs.innerHTML += "❌ Failed\n\n";
+
+    }
+
+  }
+
+  logs.innerHTML += "\nDONE.\nImported: " + imported;
+
+}
+
+</script>
+
+</body>
+</html>
